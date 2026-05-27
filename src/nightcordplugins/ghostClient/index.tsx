@@ -22,9 +22,6 @@ const DS_KEY_AUTO_FOLLOW = "nightcord-ghost-autofollow";
 const DS_KEY_MIC_DEVICE = "nightcord-ghost-mic-device-label";
 const DS_KEY_SELECTED = "nightcord-ghost-selected";
 
-const MI_TOKEN_CACHE_KEY = "nightcord-mi-token-cache";
-const TI_ACCOUNTS_KEY = "TokenImporter_accounts";
-
 let ghostMicLabel: string = "default";
 
 const Native = VencordNative.pluginHelpers.GhostClient as PluginNative<typeof import("./native")>;
@@ -100,23 +97,9 @@ async function fetchUser(token: string) {
 }
 
 async function getAllSavedAccounts(): Promise<GhostAccount[]> {
-    // 1. Récupérer les comptes propres à GhostAccounts
     const ghostAccs = await DataStore.get<GhostAccount[]>(DS_KEY_TOKENS) ?? [];
-
-    // 2. Récupérer les comptes de TokenImporter
-    const tiAccsRaw = await DataStore.get<any[]>(TI_ACCOUNTS_KEY) ?? [];
-    const tiAccs: GhostAccount[] = tiAccsRaw.map(a => ({
-        token: a.token,
-        userId: a.id,
-        username: a.username,
-        avatar: a.avatar ? a.avatar.split("/").pop()?.split(".")[0] || null : null // On extrait le hash de l'avatar
-    }));
-
-    // 3. Fusionner les deux listes sans doublons (basé sur userId)
     const combined = new Map<string, GhostAccount>();
-    tiAccs.forEach(a => combined.set(a.userId, a));
     ghostAccs.forEach(a => combined.set(a.userId, a));
-
     return Array.from(combined.values());
 }
 
