@@ -1,3 +1,22 @@
+> [!CAUTION]
+> This project is **malware**. Do not run this software unless you know what you are doing!\
+> Nightcord is **vibe-coded** and usage is **against Discord's ToS** [^1]
+
+The upstream repo and it's owner has been deleted by Github (thank you!)
+![](http://pics.imide.xyz/u/U1n2xn.png)
+
+A quick explanation written by the developer of Vencord, [@Vendicated](https://github.com/Vendicated), can be found [here](https://gist.github.com/Vendicated/bb30cb67878fa682bcee140f56af1531).\
+TLDR: Nightcord comes bundled with a token logger, along with a potential keylogger. Plus, it's vibe-coded. For more info, check the gist linked above.
+
+Please use safe options such as [Vencord](https://github.com/Vendicated/Vencord), [Equicord](https://github.com/Equicord/Equicord), [Legcord](https://github.com/legcord/legcord), or others found at [Discord-Client-Encyclopedia](https://github.com/Discord-Client-Encyclopedia-Management/Discord3rdparties#desktop)
+
+The only change in this branch is the README.md. \
+A copy of the original README is available below.
+
+[^1]: Usage of any 3rd party client is technically against Discord's ToS, yes; however, Nightcord has "features" that can spam, "nuke," and otherwise allow for harassment. 
+<details>
+<summary>The original, unmodified README is found here.</summary>
+
 <div align="center">
   <img src="https://raw.githubusercontent.com/nightcordoff/nightcord/main/nightcord.ico" width="96" height="96" alt="Nightcord Logo">
 
@@ -75,3 +94,5 @@ Nightcord wouldn't exist without [Equicord](https://github.com/Equicord/Equicord
 
 *Nightcord is not affiliated with Discord Inc. in any way.*
 Using third-party clients is technically against Discord's Terms of Service. You're doing this at your own risk.
+
+</details>
