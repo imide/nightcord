@@ -1,7 +1,7 @@
 import { ChatBarButton, ChatBarButtonFactory } from "@api/ChatButtons";
 import { definePluginSettings } from "@api/Settings";
 import { showApiKeyWarning } from "@utils/apiKeyWarning";
-import definePlugin, { OptionType } from "@utils/types";
+import definePlugin, { OptionType } from "@utils/types"; // Import conservé mais syntaxe d'export en bas sécurisée
 import { ComponentDispatch, MediaEngineStore, React, showToast, Toasts, useEffect, useRef, useState } from "@webpack/common";
 
 import { getGroqKey } from "../nightcordAI/groqManager";
@@ -95,7 +95,6 @@ function getDiscordVoice(): any | null {
     }
 }
 
-
 const VoiceDictationButton: ChatBarButtonFactory = ({ isMainChat }) => {
     const [recording, setRecording] = useState(false);
     const [processing, setProcessing] = useState(false);
@@ -112,163 +111,8 @@ const VoiceDictationButton: ChatBarButtonFactory = ({ isMainChat }) => {
 
     useEffect(() => () => { stopDictation(); }, []);
 
-<<<<<<< HEAD
-    async function startDictation() {
-        setErrorMsg(null);
-        activeRef.current = true;
-
-        let stream: MediaStream;
-        try {
-            stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            streamRef.current = stream;
-        } catch (e: any) {
-            const msg = e.name === "NotAllowedError" || e.name === "PermissionDeniedError"
-                ? "Microphone permission denied — check permissions in Discord settings"
-                : "Mic unavailable: " + e.message;
-            setErrorMsg(msg);
-            activeRef.current = false;
-            return;
-        }
-
-        const apiKey = await getGroqKey();
-        if (!apiKey) {
-            stream.getTracks().forEach(t => t.stop());
-            streamRef.current = null;
-            showApiKeyWarning("VoiceDictation");
-            return;
-        }
-
-        async function getRealInputDeviceId(discordId: string): Promise<string> {
-            if (!discordId || discordId === "default") return "default";
-            try {
-                const devs = MediaEngineStore.getInputDevices();
-                let targetName = "";
-                
-                if (devs && typeof devs === "object") {
-                    if (Array.isArray(devs)) {
-                        const d = devs.find(item => item.id === discordId);
-                        if (d) targetName = d.name;
-                    } else if (devs[discordId]) {
-                        targetName = devs[discordId].name;
-                    }
-                }
-                
-                let webDevs = await navigator.mediaDevices.enumerateDevices();
-                
-                if (!targetName) return "default";
-                if (webDevs.some(d => d.kind === "audioinput" && !d.label)) {
-                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                    stream.getTracks().forEach(t => t.stop());
-                    webDevs = await navigator.mediaDevices.enumerateDevices();
-                }
-
-                let match = webDevs.find(d => d.kind === "audioinput" && d.deviceId === discordId);
-
-                if (!match) {
-                    const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
-                    const normSelected = normalize(targetName);
-                    match = webDevs.find(d => {
-                        if (d.kind !== "audioinput" || !d.label) return false;
-                        const normLabel = normalize(d.label);
-                        return normLabel.includes(normSelected) || normSelected.includes(normLabel);
-                    });
-                }
-
-                if (match) {
-                    console.log(`[VoiceDictation] Mapped Discord device "${targetName}" to WebAudio deviceId "${match.deviceId}"`);
-                    showToast(`Dictation: Using mic "${match.label || targetName}"`, Toasts.Type.SUCCESS);
-                    return match.deviceId;
-                } else {
-                    showToast(`Dictation: Could not map "${targetName}", using default`, Toasts.Type.FAILURE);
-                }
-            } catch (err) {
-                console.error("[VoiceDictation] Error mapping device ID:", err);
-                showToast("Dictation: Error mapping device", Toasts.Type.FAILURE);
-            }
-            return "default";
-        }
-
-        try {
-            const discordDeviceId = MediaEngineStore.getInputDeviceId();
-            const realDeviceId = await getRealInputDeviceId(discordDeviceId);
-            
-            if (realDeviceId && realDeviceId !== "default") {
-                try {
-                    const betterStream = await navigator.mediaDevices.getUserMedia({
-                        audio: { deviceId: { exact: realDeviceId } }
-                    });
-                    stream.getTracks().forEach(t => t.stop());
-                    stream = betterStream;
-                    streamRef.current = stream;
-                } catch { }
-
-            try {
-                stream = await navigator.mediaDevices.getUserMedia({
-                    audio: realDeviceId && realDeviceId !== "default"
-                        ? { deviceId: { exact: realDeviceId } }
-                        : true
-                });
-            } catch (firstErr: any) {
-                if (firstErr.name === "NotAllowedError" || firstErr.name === "PermissionDeniedError") {
-                    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                } else {
-                    throw firstErr;
-                }
-            }
-            }
-        } catch (err) {
-            console.error("[VoiceDictation] Error getting specific device:", err);
-        }
-
-        const mimeType = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/mp4"]
-            .find(m => MediaRecorder.isTypeSupported(m)) ?? "";
-
-        const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
-        recorderRef.current = recorder;
-        chunksRef.current = [];
-
-        recorder.ondataavailable = e => {
-            if (e.data.size > 0) chunksRef.current.push(e.data);
-        };
-
-        recorder.start();
-        setRecording(true);
-
-        const chunkMs = (settings.store.chunkSeconds ?? 5) * 1000;
-        timerRef.current = setInterval(() => flushAndTranscribe(), chunkMs);
-    }
-
-    async function flushAndTranscribe() {
-        if (!recorderRef.current || recorderRef.current.state !== "recording") return;
-
-        recorderRef.current.stop();
-
-        await new Promise<void>(resolve => {
-            recorderRef.current!.onstop = () => resolve();
-        });
-
-        const chunks = [...chunksRef.current];
-        chunksRef.current = [];
-
-        if (chunks.length === 0 || !activeRef.current) {
-            if (activeRef.current && streamRef.current) restartRecorder();
-            return;
-        }
-
-        const mimeType = recorderRef.current?.mimeType || "audio/webm";
-        const blob = new Blob(chunks, { type: mimeType });
-
-        console.log("[VoiceDictation] Blob size:", blob.size);
-
-        if (blob.size < 500) {
-            if (activeRef.current) restartRecorder();
-            return;
-        }
-
-=======
     async function processBlob(blob: Blob) {
         if (blob.size < 500) return;
->>>>>>> 6fa09077 (fix voicemessage & voicedictation)
         setProcessing(true);
         try {
             const text = await transcribe(blob);
@@ -290,6 +134,46 @@ const VoiceDictationButton: ChatBarButtonFactory = ({ isMainChat }) => {
             setErrorMsg(e.message.slice(0, 100));
         } finally {
             setProcessing(false);
+        }
+    }
+
+    function startRecorder(stream: MediaStream) {
+        const mimeType =
+            ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/mp4"]
+                .find(m => MediaRecorder.isTypeSupported(m)) ?? "";
+        const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
+        recorderRef.current = recorder;
+        chunksRef.current = [];
+        recorder.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+        recorder.start();
+    }
+
+    async function flushAndTranscribe() {
+        if (!recorderRef.current || recorderRef.current.state !== "recording") return;
+
+        recorderRef.current.stop();
+        await new Promise<void>(resolve => { recorderRef.current!.onstop = () => resolve(); });
+
+        const chunks = [...chunksRef.current];
+        chunksRef.current = [];
+
+        if (chunks.length === 0 || !activeRef.current) {
+            if (activeRef.current) restartRecorder();
+            return;
+        }
+
+        const mimeType = recorderRef.current?.mimeType || "audio/webm";
+        const blob = new Blob(chunks, { type: mimeType });
+        console.log("[VoiceDictation] MediaRecorder blob size:", blob.size);
+        await processBlob(blob);
+
+        if (activeRef.current) restartRecorder();
+    }
+
+    function restartRecorder() {
+        if (!streamRef.current || !activeRef.current) return;
+        try { startRecorder(streamRef.current); } catch (e) {
+            console.error("[VoiceDictation] Restart error:", e);
         }
     }
 
@@ -375,46 +259,6 @@ const VoiceDictationButton: ChatBarButtonFactory = ({ isMainChat }) => {
         }
     }
 
-    function startRecorder(stream: MediaStream) {
-        const mimeType =
-            ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/mp4"]
-                .find(m => MediaRecorder.isTypeSupported(m)) ?? "";
-        const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
-        recorderRef.current = recorder;
-        chunksRef.current = [];
-        recorder.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data); };
-        recorder.start();
-    }
-
-    async function flushAndTranscribe() {
-        if (!recorderRef.current || recorderRef.current.state !== "recording") return;
-
-        recorderRef.current.stop();
-        await new Promise<void>(resolve => { recorderRef.current!.onstop = () => resolve(); });
-
-        const chunks = [...chunksRef.current];
-        chunksRef.current = [];
-
-        if (chunks.length === 0 || !activeRef.current) {
-            if (activeRef.current) restartRecorder();
-            return;
-        }
-
-        const mimeType = recorderRef.current?.mimeType || "audio/webm";
-        const blob = new Blob(chunks, { type: mimeType });
-        console.log("[VoiceDictation] MediaRecorder blob size:", blob.size);
-        await processBlob(blob);
-
-        if (activeRef.current) restartRecorder();
-    }
-
-    function restartRecorder() {
-        if (!streamRef.current || !activeRef.current) return;
-        try { startRecorder(streamRef.current); } catch (e) {
-            console.error("[VoiceDictation] Restart error:", e);
-        }
-    }
-
     async function startFallback() {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         streamRef.current = stream;
@@ -434,7 +278,6 @@ const VoiceDictationButton: ChatBarButtonFactory = ({ isMainChat }) => {
         }
 
         activeRef.current = true;
-
         const discordVoice = getDiscordVoice();
 
         if (discordVoice?.startLocalAudioRecording) {
@@ -499,9 +342,7 @@ const VoiceDictationButton: ChatBarButtonFactory = ({ isMainChat }) => {
 
     if (!isMainChat) return null;
 
-    const tooltip =
-        errorMsg ||
-        (processing ? "Transcribing..." : recording ? "Stop dictation" : "Voice dictation");
+    const tooltip = errorMsg || (processing ? "Transcribing..." : recording ? "Stop dictation" : "Voice dictation");
 
     return (
         <ChatBarButton tooltip={tooltip} onClick={toggle}>
@@ -510,17 +351,18 @@ const VoiceDictationButton: ChatBarButtonFactory = ({ isMainChat }) => {
     );
 };
 
-
-export default definePlugin({
+// Modification ici pour contourner le bug d'esbuild avec le mot-clé default direct
+const pluginObj = definePlugin({
     name: "VoiceDictation",
     enabledByDefault: true,
     description: "Real-time voice dictation via Groq Whisper (free). API key shared with NightcordAI.",
     authors: [{ name: "User", id: 0n }],
     dependencies: ["ChatInputButtonAPI"],
     settings,
-
     chatBarButton: {
         icon: DictationIcon as any,
         render: VoiceDictationButton,
     },
 });
+
+export default pluginObj;
