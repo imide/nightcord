@@ -1,18 +1,10 @@
-/*
- * Vencord, a Discord client mod
- * Copyright (c) 2026 Vendicated and contributors
- * SPDX-License-Identifier: GPL-3.0-or-later
- */
-
 import { ChatBarButton, ChatBarButtonFactory } from "@api/ChatButtons";
 import { definePluginSettings } from "@api/Settings";
 import { showApiKeyWarning } from "@utils/apiKeyWarning";
 import definePlugin, { OptionType } from "@utils/types";
-import { ComponentDispatch, MediaEngineStore, React, showToast, Toasts,useEffect, useRef, useState } from "@webpack/common";
+import { ComponentDispatch, MediaEngineStore, React, showToast, Toasts, useEffect, useRef, useState } from "@webpack/common";
 
 import { getGroqKey } from "../nightcordAI/groqManager";
-
-// ── Settings ──────────────────────────────────────────────────────────────────
 
 const settings = definePluginSettings({
     language: {
@@ -38,9 +30,13 @@ const settings = definePluginSettings({
     },
 });
 
-// ── SVG Icon ──────────────────────────────────────────────────────────────────
-
-const DictationIcon: React.FC<{ recording?: boolean; processing?: boolean; height?: string | number; width?: string | number; className?: string; }> = ({ recording = false, processing = false, height = 20, width = 20, className }) => (
+const DictationIcon: React.FC<{
+    recording?: boolean;
+    processing?: boolean;
+    height?: string | number;
+    width?: string | number;
+    className?: string;
+}> = ({ recording = false, processing = false, height = 20, width = 20, className }) => (
     <svg
         aria-hidden="true"
         role="img"
@@ -58,8 +54,6 @@ const DictationIcon: React.FC<{ recording?: boolean; processing?: boolean; heigh
     </svg>
 );
 
-// ── Transcription ─────────────────────────────────────────────────────────────
-
 function insertText(text: string) {
     ComponentDispatch.dispatchToLastSubscribed("INSERT_TEXT", {
         rawText: text,
@@ -69,12 +63,8 @@ function insertText(text: string) {
 
 async function transcribe(blob: Blob): Promise<string> {
     const language = settings.store.language?.trim() || undefined;
-
     const apiKey = await getGroqKey();
-
-    if (!apiKey) {
-        throw new Error("API key missing — Configure your key in Settings → NightcordAI");
-    }
+    if (!apiKey) throw new Error("API key missing — Configure your key in Settings → NightcordAI");
 
     const form = new FormData();
     form.append("file", blob, "audio.webm");
@@ -94,16 +84,25 @@ async function transcribe(blob: Blob): Promise<string> {
         throw new Error(`Groq API ${res.status}: ${body.slice(0, 120)}`);
     }
 
-    const text = await res.text();
-    return text.trim();
+    return (await res.text()).trim();
 }
 
-// ── Chat Bar Button ───────────────────────────────────────────────────────────
+function getDiscordVoice(): any | null {
+    try {
+        return (DiscordNative as any)?.nativeModules?.requireModule?.("discord_voice") ?? null;
+    } catch {
+        return null;
+    }
+}
+
 
 const VoiceDictationButton: ChatBarButtonFactory = ({ isMainChat }) => {
     const [recording, setRecording] = useState(false);
     const [processing, setProcessing] = useState(false);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+    const nativeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const nativeRecordingRef = useRef(false);
 
     const recorderRef = useRef<MediaRecorder | null>(null);
     const streamRef = useRef<MediaStream | null>(null);
@@ -113,6 +112,7 @@ const VoiceDictationButton: ChatBarButtonFactory = ({ isMainChat }) => {
 
     useEffect(() => () => { stopDictation(); }, []);
 
+<<<<<<< HEAD
     async function startDictation() {
         setErrorMsg(null);
         activeRef.current = true;
@@ -265,11 +265,15 @@ const VoiceDictationButton: ChatBarButtonFactory = ({ isMainChat }) => {
             return;
         }
 
+=======
+    async function processBlob(blob: Blob) {
+        if (blob.size < 500) return;
+>>>>>>> 6fa09077 (fix voicemessage & voicedictation)
         setProcessing(true);
         try {
             const text = await transcribe(blob);
-            console.log("[VoiceDictation] Transcribed text:", text);
-            if (text && text.length > 0) {
+            console.log("[VoiceDictation] Transcribed:", text);
+            if (text) {
                 const t = text.trim();
                 const isHallucination =
                     /^(merci|thanks?|thank you|music|♪|🎵|\.\.\.|\.\s*)+$/i.test(t) ||
@@ -287,69 +291,217 @@ const VoiceDictationButton: ChatBarButtonFactory = ({ isMainChat }) => {
         } finally {
             setProcessing(false);
         }
+    }
+
+    async function startNative(discordVoice: any) {
+        const chunkMs = (settings.store.chunkSeconds ?? 2) * 1000;
+        async function cycleNative() {
+            if (!nativeRecordingRef.current) return;
+
+            await new Promise<void>(resolve => {
+                discordVoice.stopLocalAudioRecording(async (filePath: string) => {
+                    nativeRecordingRef.current = false;
+                    if (filePath) {
+                        try {
+                            const buf = await (VencordNative as any).pluginHelpers?.VoiceMessages?.readRecording?.(filePath);
+                            if (buf) {
+                                const blob = new Blob([buf], { type: "audio/ogg; codecs=opus" });
+                                console.log("[VoiceDictation] Native blob size:", blob.size);
+                                await processBlob(blob);
+                            }
+                        } catch (e) {
+                            console.warn("[VoiceDictation] Could not read native recording:", e);
+                        }
+                    }
+                    resolve();
+                });
+            });
+
+            if (activeRef.current) {
+                discordVoice.startLocalAudioRecording(
+                    {
+                        echoCancellation: false,
+                        noiseCancellation: false,
+                        deviceId: MediaEngineStore.getInputDeviceId(),
+                    },
+                    (success: boolean) => {
+                        if (success) {
+                            nativeRecordingRef.current = true;
+                        } else {
+                            console.warn("[VoiceDictation] Native restart failed");
+                        }
+                    }
+                );
+            }
+        }
+
+        await new Promise<void>((resolve, reject) => {
+            discordVoice.startLocalAudioRecording(
+                {
+                    echoCancellation: false,
+                    noiseCancellation: false,
+                    deviceId: MediaEngineStore.getInputDeviceId(),
+                },
+                (success: boolean) => {
+                    if (success) {
+                        nativeRecordingRef.current = true;
+                        resolve();
+                    } else {
+                        reject(new Error("startLocalAudioRecording returned false"));
+                    }
+                }
+            );
+        });
+
+        setRecording(true);
+        nativeTimerRef.current = setInterval(() => cycleNative(), chunkMs);
+    }
+
+    async function stopNative(discordVoice: any) {
+        if (nativeTimerRef.current) {
+            clearInterval(nativeTimerRef.current);
+            nativeTimerRef.current = null;
+        }
+        if (nativeRecordingRef.current) {
+            discordVoice.stopLocalAudioRecording(async (filePath: string) => {
+                nativeRecordingRef.current = false;
+                if (filePath) {
+                    try {
+                        const buf = await (VencordNative as any).pluginHelpers?.VoiceMessages?.readRecording?.(filePath);
+                        if (buf) await processBlob(new Blob([buf], { type: "audio/ogg; codecs=opus" }));
+                    } catch { /* ignore */ }
+                }
+            });
+        }
+    }
+
+    function startRecorder(stream: MediaStream) {
+        const mimeType =
+            ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/mp4"]
+                .find(m => MediaRecorder.isTypeSupported(m)) ?? "";
+        const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
+        recorderRef.current = recorder;
+        chunksRef.current = [];
+        recorder.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+        recorder.start();
+    }
+
+    async function flushAndTranscribe() {
+        if (!recorderRef.current || recorderRef.current.state !== "recording") return;
+
+        recorderRef.current.stop();
+        await new Promise<void>(resolve => { recorderRef.current!.onstop = () => resolve(); });
+
+        const chunks = [...chunksRef.current];
+        chunksRef.current = [];
+
+        if (chunks.length === 0 || !activeRef.current) {
+            if (activeRef.current) restartRecorder();
+            return;
+        }
+
+        const mimeType = recorderRef.current?.mimeType || "audio/webm";
+        const blob = new Blob(chunks, { type: mimeType });
+        console.log("[VoiceDictation] MediaRecorder blob size:", blob.size);
+        await processBlob(blob);
 
         if (activeRef.current) restartRecorder();
     }
 
     function restartRecorder() {
         if (!streamRef.current || !activeRef.current) return;
-        try {
-            const mimeType = recorderRef.current?.mimeType;
-            const recorder = new MediaRecorder(
-                streamRef.current,
-                mimeType ? { mimeType } : {}
-            );
-            recorderRef.current = recorder;
-            chunksRef.current = [];
-            recorder.ondataavailable = e => {
-                if (e.data.size > 0) chunksRef.current.push(e.data);
-            };
-            recorder.start();
-        } catch (e) {
+        try { startRecorder(streamRef.current); } catch (e) {
             console.error("[VoiceDictation] Restart error:", e);
+        }
+    }
+
+    async function startFallback() {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        streamRef.current = stream;
+        startRecorder(stream);
+        setRecording(true);
+        const chunkMs = (settings.store.chunkSeconds ?? 2) * 1000;
+        timerRef.current = setInterval(() => flushAndTranscribe(), chunkMs);
+    }
+
+    async function startDictation() {
+        setErrorMsg(null);
+
+        const apiKey = await getGroqKey();
+        if (!apiKey) {
+            showApiKeyWarning("VoiceDictation");
+            return;
+        }
+
+        activeRef.current = true;
+
+        const discordVoice = getDiscordVoice();
+
+        if (discordVoice?.startLocalAudioRecording) {
+            console.log("[VoiceDictation] Using DiscordNative discord_voice");
+            try {
+                await startNative(discordVoice);
+                return;
+            } catch (e: any) {
+                console.warn("[VoiceDictation] Native mode failed, falling back:", e.message);
+            }
+        }
+
+        console.log("[VoiceDictation] Using getUserMedia fallback");
+        try {
+            await startFallback();
+        } catch (e: any) {
+            console.error("[VoiceDictation] startFallback failed:", e);
+            setErrorMsg("Mic error: " + (e.message?.slice(0, 80) ?? e.name));
+            activeRef.current = false;
         }
     }
 
     function stopDictation() {
         activeRef.current = false;
 
+        const discordVoice = getDiscordVoice();
+        if (discordVoice && nativeRecordingRef.current) {
+            stopNative(discordVoice);
+        }
+        if (nativeTimerRef.current) {
+            clearInterval(nativeTimerRef.current);
+            nativeTimerRef.current = null;
+        }
+
         if (timerRef.current) {
             clearInterval(timerRef.current);
             timerRef.current = null;
         }
-
-        if (recorderRef.current?.state === "recording") {
-            recorderRef.current.stop();
-        }
+        if (recorderRef.current?.state === "recording") recorderRef.current.stop();
         recorderRef.current = null;
         chunksRef.current = [];
-
         streamRef.current?.getTracks().forEach(t => t.stop());
         streamRef.current = null;
+
         setRecording(false);
         setProcessing(false);
     }
 
     function toggle() {
         if (recording) {
-            if (timerRef.current) {
-                clearInterval(timerRef.current);
-                timerRef.current = null;
-            }
-            flushAndTranscribe().finally(() => {
+            const discordVoice = getDiscordVoice();
+            if (discordVoice && nativeRecordingRef.current) {
                 stopDictation();
-            });
+            } else {
+                if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+                flushAndTranscribe().finally(() => stopDictation());
+            }
+        } else {
+            startDictation();
         }
-        else startDictation();
     }
 
     if (!isMainChat) return null;
 
-    const tooltip = errorMsg || (processing
-            ? "Transcribing..."
-            : recording
-                ? "Stop dictation"
-                : "Voice dictation");
+    const tooltip =
+        errorMsg ||
+        (processing ? "Transcribing..." : recording ? "Stop dictation" : "Voice dictation");
 
     return (
         <ChatBarButton tooltip={tooltip} onClick={toggle}>
@@ -358,7 +510,6 @@ const VoiceDictationButton: ChatBarButtonFactory = ({ isMainChat }) => {
     );
 };
 
-// ── Plugin ────────────────────────────────────────────────────────────────────
 
 export default definePlugin({
     name: "VoiceDictation",
